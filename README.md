@@ -32,6 +32,7 @@ A lightweight non-blocking STM32 HAL driver for ST7920 128×64 graphical LCDs us
 ### Microcontroller
 
 - STM32F030F4P6
+- STM32F411CEU6
 
 ### LCD Module
 
