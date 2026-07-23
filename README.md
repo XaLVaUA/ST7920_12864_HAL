@@ -21,8 +21,6 @@ A lightweight non-blocking STM32 HAL driver for ST7920 128×64 graphical LCDs us
 - Bitmap rendering
   - Row-based (MSB)
   - Row-based (LSB)
-  - Column-based (MSB)
-  - Column-based (LSB)
 - Text rendering
   - MSB fonts
   - LSB fonts
@@ -41,6 +39,7 @@ A lightweight non-blocking STM32 HAL driver for ST7920 128×64 graphical LCDs us
 
 ## Tested SPI Speeds
 
+- 375 Kbit/s
 - 500 Kbit/s
 - 1.0 Mbit/s
 - 1.5 Mbit/s
@@ -82,16 +81,12 @@ ST7920_12864_HAL_ClearBuffer(&lcd);
 
 ST7920_12864_HAL_DrawRect(&lcd, 5, 5, 40, 20, 1);
 
-ST7920_12864_HAL_DrawString(
+ST7920_12864_HAL_DrawStringLSB(
     &lcd,
     0,
     0,
     "Hello",
-    font5x7,
-    5,
-    7,
-    32,
-    126,
+    &font,
     1,
     1,
     1
