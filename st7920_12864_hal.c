@@ -2,6 +2,27 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define BYTES_PER_WRITE 4
+
+typedef enum {
+    Uninitialized,
+    Ready,
+    InitDisplayWaitReset,
+    InitDisplayWaitAfterReset,
+    InitDisplayWaitFunctionSet,
+    InitDisplayWaitAfterFunctionSet,
+    InitDisplayWaitDisplayClear,
+    InitDisplayWaitAfterDisplayClear,
+    InitDisplayWaitExtendedInstructionSet,
+    InitDisplayWaitAfterExtendedInstructionSet,
+    InitDisplayWaitGraphicDisplayOn,
+    InitDisplayWaitAfterGraphicDisplayOn,
+    RenderWaitSetAddressTop,
+    RenderWaitPixelTop,
+    RenderWaitSetAddressBottom,
+    RenderWaitPixelBottom
+} State;
+
 void ST7920_12864_HAL_InitHandle
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
@@ -20,33 +41,32 @@ void ST7920_12864_HAL_InitHandle
     lcd->rstPort = rstPort;
     lcd->rstPin = rstPin;
     lcd->renderTicks = renderTicks;
-    lcd->state = ST7920_12864_HAL_STATE_Ready;
+    lcd->state = Ready;
 }
 
-uint8_t ST7920_12864_HAL_StartWrite(ST7920_12864_HAL_HandleTypeDef *lcd)
+void SetNextData(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t byte)
+{
+    lcd->txBuffer[lcd->txBufferSize] = 0xFA;
+    lcd->txBuffer[lcd->txBufferSize + 1] = byte & 0xF0;
+    lcd->txBuffer[lcd->txBufferSize + 2] = byte << 4;
+    lcd->txBufferSize += 3;
+}
+
+uint8_t StartWrite(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     return HAL_SPI_Transmit_IT(lcd->spi, lcd->txBuffer, lcd->txBufferSize);
 }
 
-uint8_t ST7920_12864_HAL_StartWriteCommand(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t command)
+uint8_t StartWriteCommand(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t command)
 {
     lcd->txBuffer[0] = 0xF8;
     lcd->txBuffer[1] = command & 0xF0;
     lcd->txBuffer[2] = command << 4;
     lcd->txBufferSize = 3;
-    return ST7920_12864_HAL_StartWrite(lcd);
+    return StartWrite(lcd);
 }
 
-uint8_t ST7920_12864_HAL_StartWriteData(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t data)
-{
-    lcd->txBuffer[0] = 0xFA;
-    lcd->txBuffer[1] = data & 0xF0;
-    lcd->txBuffer[2] = data << 4;
-    lcd->txBufferSize = 3;
-    return ST7920_12864_HAL_StartWrite(lcd);
-}
-
-uint8_t ST7920_12864_HAL_StartSetGDRAMAddress(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t x, uint8_t y)
+uint8_t StartSetGDRAMAddress(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t x, uint8_t y)
 {
     uint8_t yCommand = (0x80 | y);
     uint8_t xCommand = (0x80 | x);
@@ -57,17 +77,17 @@ uint8_t ST7920_12864_HAL_StartSetGDRAMAddress(ST7920_12864_HAL_HandleTypeDef *lc
     lcd->txBuffer[4] = xCommand & 0xF0;
     lcd->txBuffer[5] = xCommand << 4;
     lcd->txBufferSize = 6;
-    return ST7920_12864_HAL_StartWrite(lcd);
+    return StartWrite(lcd);
 }
 
-void ST7920_12864_HAL_StartSetGDRAMAddressTop(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t x, uint8_t y)
+void StartSetGDRAMAddressTop(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t x, uint8_t y)
 {
-    ST7920_12864_HAL_StartSetGDRAMAddress(lcd, x, y);
+    StartSetGDRAMAddress(lcd, x, y);
 }
 
-void ST7920_12864_HAL_StartSetGDRAMAddressBottom(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t x, uint8_t y)
+void StartSetGDRAMAddressBottom(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t x, uint8_t y)
 {
-    ST7920_12864_HAL_StartSetGDRAMAddress(lcd, (x + 8), (y - 32));
+    StartSetGDRAMAddress(lcd, (x + 8), (y - 32));
 }
 
 void ST7920_12864_HAL_StartInitDisplay(ST7920_12864_HAL_HandleTypeDef *lcd)
@@ -75,228 +95,184 @@ void ST7920_12864_HAL_StartInitDisplay(ST7920_12864_HAL_HandleTypeDef *lcd)
     lcd->rstPort->BRR = lcd->rstPin;
     lcd->csPort->BSRR = lcd->csPin;
     lcd->lastTick = HAL_GetTick();
-    lcd->state = ST7920_12864_HAL_STATE_InitDisplayWaitReset;
+    lcd->state = InitDisplayWaitReset;
 }
 
-void ST7920_12864_HAL_HandleInitDisplayWaitReset(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleInitDisplayWaitReset(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_GetTick() - lcd->lastTick < 100) return;
     lcd->rstPort->BSRR = lcd->rstPin;
     lcd->lastTick = HAL_GetTick();
-    lcd->state = ST7920_12864_HAL_STATE_InitDisplayWaitAfterReset;
+    lcd->state = InitDisplayWaitAfterReset;
 }
 
-void ST7920_12864_HAL_HandleInitDisplayWaitAfterReset(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleInitDisplayWaitAfterReset(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_GetTick() - lcd->lastTick < 10) return;
-    ST7920_12864_HAL_StartWriteCommand(lcd, 0x30);
-    lcd->state = ST7920_12864_HAL_STATE_InitDisplayWaitFunctionSet;
+    StartWriteCommand(lcd, 0x30);
+    lcd->state = InitDisplayWaitFunctionSet;
 }
 
-void ST7920_12864_HAL_HandleInitDisplayWaitFunctionSet(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleInitDisplayWaitFunctionSet(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_SPI_GetState(lcd->spi) != HAL_SPI_STATE_READY) return;
     lcd->lastTick = HAL_GetTick();
-    lcd->state = ST7920_12864_HAL_STATE_InitDisplayWaitAfterFunctionSet;
+    lcd->state = InitDisplayWaitAfterFunctionSet;
 }
 
-void ST7920_12864_HAL_HandleInitDisplayWaitAfterFunctionSet(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleInitDisplayWaitAfterFunctionSet(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_GetTick() - lcd->lastTick < 1) return;
-    ST7920_12864_HAL_StartWriteCommand(lcd, 0x01);
-    lcd->state = ST7920_12864_HAL_STATE_InitDisplayWaitDisplayClear;
+    StartWriteCommand(lcd, 0x01);
+    lcd->state = InitDisplayWaitDisplayClear;
 }
 
-void ST7920_12864_HAL_HandleInitDisplayWaitDisplayClear(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleInitDisplayWaitDisplayClear(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_SPI_GetState(lcd->spi) != HAL_SPI_STATE_READY) return;
     lcd->lastTick = HAL_GetTick();
-    lcd->state = ST7920_12864_HAL_STATE_InitDisplayWaitAfterDisplayClear;
+    lcd->state = InitDisplayWaitAfterDisplayClear;
 }
 
-void ST7920_12864_HAL_HandleInitDisplayWaitAfterDisplayClear(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleInitDisplayWaitAfterDisplayClear(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_GetTick() - lcd->lastTick < 3) return;
-    ST7920_12864_HAL_StartWriteCommand(lcd, 0x34);
-    lcd->state = ST7920_12864_HAL_STATE_InitDisplayWaitExtendedInstructionSet;
+    StartWriteCommand(lcd, 0x34);
+    lcd->state = InitDisplayWaitExtendedInstructionSet;
 }
 
-void ST7920_12864_HAL_HandleInitDisplayWaitExtendedInstructionSet(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleInitDisplayWaitExtendedInstructionSet(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_SPI_GetState(lcd->spi) != HAL_SPI_STATE_READY) return;
     lcd->lastTick = HAL_GetTick();
-    lcd->state = ST7920_12864_HAL_STATE_InitDisplayWaitAfterExtendedInstructionSet;
+    lcd->state = InitDisplayWaitAfterExtendedInstructionSet;
 }
 
-void ST7920_12864_HAL_HandleInitDisplayWaitAfterExtendedInstructionSet(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleInitDisplayWaitAfterExtendedInstructionSet(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_GetTick() - lcd->lastTick < 1) return;
-    ST7920_12864_HAL_StartWriteCommand(lcd, 0x36);
-    lcd->state = ST7920_12864_HAL_STATE_InitDisplayWaitGraphicDisplayOn;
+    StartWriteCommand(lcd, 0x36);
+    lcd->state = InitDisplayWaitGraphicDisplayOn;
 }
 
-void ST7920_12864_HAL_HandleInitDisplayWaitGraphicDisplayOn(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleInitDisplayWaitGraphicDisplayOn(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_SPI_GetState(lcd->spi) != HAL_SPI_STATE_READY) return;
     lcd->lastTick = HAL_GetTick();
-    lcd->state = ST7920_12864_HAL_STATE_InitDisplayWaitAfterGraphicDisplayOn;
+    lcd->state = InitDisplayWaitAfterGraphicDisplayOn;
 }
 
-void ST7920_12864_HAL_HandleInitDisplayWaitAfterGraphicDisplayOn(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleInitDisplayWaitAfterGraphicDisplayOn(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_GetTick() - lcd->lastTick < 1) return;
     lcd->csPort->BRR = lcd->csPin;
-    lcd->state = ST7920_12864_HAL_STATE_Ready;
+    lcd->state = Ready;
 }
 
-void ST7920_12864_HAL_StartRender(ST7920_12864_HAL_HandleTypeDef *lcd)
+void StartRender(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
-    if (lcd->state != ST7920_12864_HAL_STATE_Ready) return;
+    if (lcd->state != Ready) return;
     lcd->csPort->BSRR = lcd->csPin;
     lcd->y = 0;
     lcd->xByte = 0;
-    ST7920_12864_HAL_StartSetGDRAMAddressTop(lcd, 0, 0);
-    lcd->state = ST7920_12864_HAL_STATE_RenderWaitSetAddressTop;
+    StartSetGDRAMAddressTop(lcd, 0, 0);
+    lcd->state = RenderWaitSetAddressTop;
 }
 
-void ST7920_12864_HAL_HandleRenderWaitSetAddressTop(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleRenderWaitSetAddressTop(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_SPI_GetState(lcd->spi) != HAL_SPI_STATE_READY) return;
     uint16_t idx = (uint16_t)lcd->y * 16 + lcd->xByte;
-    uint8_t byte2 = lcd->pixelBuffer[idx + 1];
-    uint8_t byte3 = lcd->pixelBuffer[idx + 2];
-    uint8_t byte4 = lcd->pixelBuffer[idx + 3];
-    lcd->txBuffer[0] = 0xFA;
-    lcd->txBuffer[1] = lcd->pixelBuffer[idx] & 0xF0;
-    lcd->txBuffer[2] = lcd->pixelBuffer[idx] << 4;
-    lcd->txBuffer[3] = 0xFA;
-    lcd->txBuffer[4] = byte2 & 0xF0;
-    lcd->txBuffer[5] = byte2 << 4;
-    lcd->txBuffer[6] = 0xFA;
-    lcd->txBuffer[7] = byte3 & 0xF0;
-    lcd->txBuffer[8] = byte3 << 4;
-    lcd->txBuffer[9] = 0xFA;
-    lcd->txBuffer[10] = byte4 & 0xF0;
-    lcd->txBuffer[11] = byte4 << 4;
-    lcd->txBufferSize = 12;
-    ST7920_12864_HAL_StartWrite(lcd);
-    lcd->state = ST7920_12864_HAL_STATE_RenderWaitPixelTop;
+    lcd->txBufferSize = 0;
+    for (uint8_t i = 0; i < BYTES_PER_WRITE; ++i)
+    {
+        SetNextData(lcd, lcd->pixelBuffer[idx + i]);
+    }
+    StartWrite(lcd);
+    lcd->state = RenderWaitPixelTop;
 }
 
-void ST7920_12864_HAL_HandleRenderWaitPixelTop(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleRenderWaitPixelTop(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_SPI_GetState(lcd->spi) != HAL_SPI_STATE_READY) return;
 
-    lcd->xByte += 4;
+    lcd->xByte += BYTES_PER_WRITE;
 
     if (lcd->xByte >= 16)
     {
         lcd->xByte = 0;
         ++lcd->y;
 
-        if (lcd->y == 32)
+        if (lcd->y >= 32)
         {
-            ST7920_12864_HAL_StartSetGDRAMAddressBottom(lcd, 0, lcd->y);
-            lcd->state = ST7920_12864_HAL_STATE_RenderWaitSetAddressBottom;
+            StartSetGDRAMAddressBottom(lcd, 0, lcd->y);
+            lcd->state = RenderWaitSetAddressBottom;
         }
         else
         {
-            ST7920_12864_HAL_StartSetGDRAMAddressTop(lcd, 0, lcd->y);
-            lcd->state = ST7920_12864_HAL_STATE_RenderWaitSetAddressTop;
+            StartSetGDRAMAddressTop(lcd, 0, lcd->y);
+            lcd->state = RenderWaitSetAddressTop;
         }
 
         return;
     }
 
     uint16_t idx = (uint16_t)lcd->y * 16 + lcd->xByte;
-    uint8_t byte2 = lcd->pixelBuffer[idx + 1];
-    uint8_t byte3 = lcd->pixelBuffer[idx + 2];
-    uint8_t byte4 = lcd->pixelBuffer[idx + 3];
-    lcd->txBuffer[0] = 0xFA;
-    lcd->txBuffer[1] = lcd->pixelBuffer[idx] & 0xF0;
-    lcd->txBuffer[2] = lcd->pixelBuffer[idx] << 4;
-    lcd->txBuffer[3] = 0xFA;
-    lcd->txBuffer[4] = byte2 & 0xF0;
-    lcd->txBuffer[5] = byte2 << 4;
-    lcd->txBuffer[6] = 0xFA;
-    lcd->txBuffer[7] = byte3 & 0xF0;
-    lcd->txBuffer[8] = byte3 << 4;
-    lcd->txBuffer[9] = 0xFA;
-    lcd->txBuffer[10] = byte4 & 0xF0;
-    lcd->txBuffer[11] = byte4 << 4;
-    lcd->txBufferSize = 12;
-    ST7920_12864_HAL_StartWrite(lcd);
-    lcd->state = ST7920_12864_HAL_STATE_RenderWaitPixelTop;
+    lcd->txBufferSize = 0;
+    for (uint8_t i = 0; i < BYTES_PER_WRITE; ++i)
+    {
+        SetNextData(lcd, lcd->pixelBuffer[idx + i]);
+    }
+    StartWrite(lcd);
+    lcd->state = RenderWaitPixelTop;
 }
 
-void ST7920_12864_HAL_HandleRenderWaitSetAddressBottom(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleRenderWaitSetAddressBottom(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_SPI_GetState(lcd->spi) != HAL_SPI_STATE_READY) return;
     uint16_t idx = (uint16_t)lcd->y * 16 + lcd->xByte;
-    uint8_t byte2 = lcd->pixelBuffer[idx + 1];
-    uint8_t byte3 = lcd->pixelBuffer[idx + 2];
-    uint8_t byte4 = lcd->pixelBuffer[idx + 3];
-    lcd->txBuffer[0] = 0xFA;
-    lcd->txBuffer[1] = lcd->pixelBuffer[idx] & 0xF0;
-    lcd->txBuffer[2] = lcd->pixelBuffer[idx] << 4;
-    lcd->txBuffer[3] = 0xFA;
-    lcd->txBuffer[4] = byte2 & 0xF0;
-    lcd->txBuffer[5] = byte2 << 4;
-    lcd->txBuffer[6] = 0xFA;
-    lcd->txBuffer[7] = byte3 & 0xF0;
-    lcd->txBuffer[8] = byte3 << 4;
-    lcd->txBuffer[9] = 0xFA;
-    lcd->txBuffer[10] = byte4 & 0xF0;
-    lcd->txBuffer[11] = byte4 << 4;
-    lcd->txBufferSize = 12;
-    ST7920_12864_HAL_StartWrite(lcd);
-    lcd->state = ST7920_12864_HAL_STATE_RenderWaitPixelBottom;
+    lcd->txBufferSize = 0;
+    for (uint8_t i = 0; i < BYTES_PER_WRITE; ++i)
+    {
+        SetNextData(lcd, lcd->pixelBuffer[idx + i]);
+    }
+    StartWrite(lcd);
+    lcd->state = RenderWaitPixelBottom;
 }
 
-void ST7920_12864_HAL_HandleRenderWaitPixelBottom(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleRenderWaitPixelBottom(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_SPI_GetState(lcd->spi) != HAL_SPI_STATE_READY) return;
 
-    lcd->xByte += 4;
+    lcd->xByte += BYTES_PER_WRITE;
 
     if (lcd->xByte >= 16)
     {
         lcd->xByte = 0;
         ++lcd->y;
 
-        if (lcd->y == 64)
+        if (lcd->y >= 64)
         {
             lcd->csPort->BRR = lcd->csPin;
-            lcd->state = ST7920_12864_HAL_STATE_Ready;
+            lcd->state = Ready;
         }
         else
         {
-            ST7920_12864_HAL_StartSetGDRAMAddressBottom(lcd, 0, lcd->y);
-            lcd->state = ST7920_12864_HAL_STATE_RenderWaitSetAddressBottom;
+            StartSetGDRAMAddressBottom(lcd, 0, lcd->y);
+            lcd->state = RenderWaitSetAddressBottom;
         }
 
         return;
     }
 
     uint16_t idx = (uint16_t)lcd->y * 16 + lcd->xByte;
-    uint8_t byte2 = lcd->pixelBuffer[idx + 1];
-    uint8_t byte3 = lcd->pixelBuffer[idx + 2];
-    uint8_t byte4 = lcd->pixelBuffer[idx + 3];
-    lcd->txBuffer[0] = 0xFA;
-    lcd->txBuffer[1] = lcd->pixelBuffer[idx] & 0xF0;
-    lcd->txBuffer[2] = lcd->pixelBuffer[idx] << 4;
-    lcd->txBuffer[3] = 0xFA;
-    lcd->txBuffer[4] = byte2 & 0xF0;
-    lcd->txBuffer[5] = byte2 << 4;
-    lcd->txBuffer[6] = 0xFA;
-    lcd->txBuffer[7] = byte3 & 0xF0;
-    lcd->txBuffer[8] = byte3 << 4;
-    lcd->txBuffer[9] = 0xFA;
-    lcd->txBuffer[10] = byte4 & 0xF0;
-    lcd->txBuffer[11] = byte4 << 4;
-    lcd->txBufferSize = 12;
-    ST7920_12864_HAL_StartWrite(lcd);
-    lcd->state = ST7920_12864_HAL_STATE_RenderWaitPixelBottom;
+    lcd->txBufferSize = 0;
+    for (uint8_t i = 0; i < BYTES_PER_WRITE; ++i)
+    {
+        SetNextData(lcd, lcd->pixelBuffer[idx + i]);
+    }
+    StartWrite(lcd);
+    lcd->state = RenderWaitPixelBottom;
 }
 
 void ST7920_12864_HAL_ClearBuffer(ST7920_12864_HAL_HandleTypeDef *lcd)
@@ -304,73 +280,70 @@ void ST7920_12864_HAL_ClearBuffer(ST7920_12864_HAL_HandleTypeDef *lcd)
     memset(lcd->pixelBuffer, 0x00, sizeof(lcd->pixelBuffer));
 }
 
-void ST7920_12864_HAL_SetPixel(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t x, uint8_t y, uint8_t color)
+void SetPixel(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t x, uint8_t y, uint8_t color)
 {
     uint16_t byteIdx = (uint16_t)y * 16 + (x / 8);
     uint8_t  bitPos  = 7 - (x % 8);
-
-    if (color)
-        lcd->pixelBuffer[byteIdx] |=  (1 << bitPos);
-    else
-        lcd->pixelBuffer[byteIdx] &= ~(1 << bitPos);
+    if (color) lcd->pixelBuffer[byteIdx] |=  (1 << bitPos);
+    else lcd->pixelBuffer[byteIdx] &= ~(1 << bitPos);
 }
 
-void ST7920_12864_HAL_HandleReady(ST7920_12864_HAL_HandleTypeDef *lcd)
+void HandleReady(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_GetTick() - lcd->lastRenderTick < lcd->renderTicks) return;
     lcd->lastRenderTick = HAL_GetTick();
-    ST7920_12864_HAL_StartRender(lcd);
+    StartRender(lcd);
 }
 
 uint8_t ST7920_12864_HAL_HandleState(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
-    switch (lcd->state)
+    switch ((State)lcd->state)
     {
-        case ST7920_12864_HAL_STATE_Uninitialized: return 0;
-        case ST7920_12864_HAL_STATE_Ready:
-            ST7920_12864_HAL_HandleReady(lcd);
+        case Uninitialized: return 0;
+        case Ready:
+            HandleReady(lcd);
             return 1;
-        case ST7920_12864_HAL_STATE_InitDisplayWaitReset:
-            ST7920_12864_HAL_HandleInitDisplayWaitReset(lcd);
+        case InitDisplayWaitReset:
+            HandleInitDisplayWaitReset(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_InitDisplayWaitAfterReset:
-            ST7920_12864_HAL_HandleInitDisplayWaitAfterReset(lcd);
+        case InitDisplayWaitAfterReset:
+            HandleInitDisplayWaitAfterReset(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_InitDisplayWaitFunctionSet:
-            ST7920_12864_HAL_HandleInitDisplayWaitFunctionSet(lcd);
+        case InitDisplayWaitFunctionSet:
+            HandleInitDisplayWaitFunctionSet(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_InitDisplayWaitAfterFunctionSet:
-            ST7920_12864_HAL_HandleInitDisplayWaitAfterFunctionSet(lcd);
+        case InitDisplayWaitAfterFunctionSet:
+            HandleInitDisplayWaitAfterFunctionSet(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_InitDisplayWaitDisplayClear:
-            ST7920_12864_HAL_HandleInitDisplayWaitDisplayClear(lcd);
+        case InitDisplayWaitDisplayClear:
+            HandleInitDisplayWaitDisplayClear(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_InitDisplayWaitAfterDisplayClear:
-            ST7920_12864_HAL_HandleInitDisplayWaitAfterDisplayClear(lcd);
+        case InitDisplayWaitAfterDisplayClear:
+            HandleInitDisplayWaitAfterDisplayClear(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_InitDisplayWaitExtendedInstructionSet:
-            ST7920_12864_HAL_HandleInitDisplayWaitExtendedInstructionSet(lcd);
+        case InitDisplayWaitExtendedInstructionSet:
+            HandleInitDisplayWaitExtendedInstructionSet(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_InitDisplayWaitAfterExtendedInstructionSet:
-            ST7920_12864_HAL_HandleInitDisplayWaitAfterExtendedInstructionSet(lcd);
+        case InitDisplayWaitAfterExtendedInstructionSet:
+            HandleInitDisplayWaitAfterExtendedInstructionSet(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_InitDisplayWaitGraphicDisplayOn:
-            ST7920_12864_HAL_HandleInitDisplayWaitGraphicDisplayOn(lcd);
+        case InitDisplayWaitGraphicDisplayOn:
+            HandleInitDisplayWaitGraphicDisplayOn(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_InitDisplayWaitAfterGraphicDisplayOn:
-            ST7920_12864_HAL_HandleInitDisplayWaitAfterGraphicDisplayOn(lcd);
+        case InitDisplayWaitAfterGraphicDisplayOn:
+            HandleInitDisplayWaitAfterGraphicDisplayOn(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_RenderWaitSetAddressTop:
-            ST7920_12864_HAL_HandleRenderWaitSetAddressTop(lcd);
+        case RenderWaitSetAddressTop:
+            HandleRenderWaitSetAddressTop(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_RenderWaitPixelTop:
-            ST7920_12864_HAL_HandleRenderWaitPixelTop(lcd);
+        case RenderWaitPixelTop:
+            HandleRenderWaitPixelTop(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_RenderWaitSetAddressBottom:
-            ST7920_12864_HAL_HandleRenderWaitSetAddressBottom(lcd);
+        case RenderWaitSetAddressBottom:
+            HandleRenderWaitSetAddressBottom(lcd);
             return 0;
-        case ST7920_12864_HAL_STATE_RenderWaitPixelBottom:
-            ST7920_12864_HAL_HandleRenderWaitPixelBottom(lcd);
+        case RenderWaitPixelBottom:
+            HandleRenderWaitPixelBottom(lcd);
             return 0;
     }
 
@@ -379,22 +352,22 @@ uint8_t ST7920_12864_HAL_HandleState(ST7920_12864_HAL_HandleTypeDef *lcd)
 
 uint8_t ST7920_12864_HAL_IsReady(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
-    return lcd->state == ST7920_12864_HAL_STATE_Ready;
+    return lcd->state == Ready;
 }
 
 void ST7920_12864_HAL_DrawFastHLine
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
+    uint8_t x,
+    uint8_t y,
+    uint8_t w,
     uint8_t color
 )
 {
     if (w <= 0)
         return;
 
-    int xEnd = x + w - 1;
+    uint8_t xEnd = x + w - 1;
 
     uint16_t startByte = y * 16 + (x >> 3);
     uint16_t endByte   = y * 16 + (xEnd >> 3);
@@ -433,42 +406,42 @@ void ST7920_12864_HAL_DrawFastHLine
 void ST7920_12864_HAL_DrawFastVLine
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int h,
+    uint8_t x,
+    uint8_t y,
+    uint8_t h,
     uint8_t color
 )
 {
     for (int yy = y; yy < y + h; ++yy)
     {
-        ST7920_12864_HAL_SetPixel(lcd, x, yy, color);
+        SetPixel(lcd, x, yy, color);
     }
 }
 
 void ST7920_12864_HAL_DrawLine
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x0,
-    int y0,
-    int x1,
-    int y1,
+    uint8_t x0,
+    uint8_t y0,
+    uint8_t x1,
+    uint8_t y1,
     uint8_t color
 )
 {
-    int dx = abs(x1 - x0);
-    int sx = x0 < x1 ? 1 : -1;
-    int dy = -abs(y1 - y0);
-    int sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy;
+    uint8_t dx = abs(x1 - x0);
+    uint8_t sx = x0 < x1 ? 1 : -1;
+    uint8_t dy = -abs(y1 - y0);
+    uint8_t sy = y0 < y1 ? 1 : -1;
+    uint8_t err = dx + dy;
 
     while (1)
     {
-        ST7920_12864_HAL_SetPixel(lcd, x0, y0, color);
+        SetPixel(lcd, x0, y0, color);
 
         if (x0 == x1 && y0 == y1)
             break;
 
-        int e2 = err * 2;
+        uint8_t e2 = err * 2;
 
         if (e2 >= dy)
         {
@@ -487,10 +460,10 @@ void ST7920_12864_HAL_DrawLine
 void ST7920_12864_HAL_DrawRect
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
+    uint8_t x,
+    uint8_t y,
+    uint8_t w,
+    uint8_t h,
     uint8_t color
 )
 {
@@ -509,10 +482,10 @@ void ST7920_12864_HAL_DrawRect
 void ST7920_12864_HAL_FillRect
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
+    uint8_t x,
+    uint8_t y,
+    uint8_t w,
+    uint8_t h,
     uint8_t color
 )
 {
@@ -525,27 +498,27 @@ void ST7920_12864_HAL_FillRect
 void ST7920_12864_HAL_DrawCircle
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int xc,
-    int yc,
-    int r,
+    uint8_t xc,
+    uint8_t yc,
+    uint8_t r,
     uint8_t color
 )
 {
-    int x = 0;
-    int y = r;
-    int d = 3 - 2 * r;
+    uint8_t x = 0;
+    uint8_t y = r;
+    uint8_t d = 3 - 2 * r;
 
     while (y >= x)
     {
-        ST7920_12864_HAL_SetPixel(lcd, xc + x, yc + y, color);
-        ST7920_12864_HAL_SetPixel(lcd, xc - x, yc + y, color);
-        ST7920_12864_HAL_SetPixel(lcd, xc + x, yc - y, color);
-        ST7920_12864_HAL_SetPixel(lcd, xc - x, yc - y, color);
+        SetPixel(lcd, xc + x, yc + y, color);
+        SetPixel(lcd, xc - x, yc + y, color);
+        SetPixel(lcd, xc + x, yc - y, color);
+        SetPixel(lcd, xc - x, yc - y, color);
 
-        ST7920_12864_HAL_SetPixel(lcd, xc + y, yc + x, color);
-        ST7920_12864_HAL_SetPixel(lcd, xc - y, yc + x, color);
-        ST7920_12864_HAL_SetPixel(lcd, xc + y, yc - x, color);
-        ST7920_12864_HAL_SetPixel(lcd, xc - y, yc - x, color);
+        SetPixel(lcd, xc + y, yc + x, color);
+        SetPixel(lcd, xc - y, yc + x, color);
+        SetPixel(lcd, xc + y, yc - x, color);
+        SetPixel(lcd, xc - y, yc - x, color);
 
         ++x;
 
@@ -564,15 +537,15 @@ void ST7920_12864_HAL_DrawCircle
 void ST7920_12864_HAL_FillCircle
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int xc,
-    int yc,
-    int r,
+    uint8_t xc,
+    uint8_t yc,
+    uint8_t r,
     uint8_t color
 )
 {
-    int x = 0;
-    int y = r;
-    int d = 3 - 2 * r;
+    uint8_t x = 0;
+    uint8_t y = r;
+    uint8_t d = 3 - 2 * r;
 
     while (y >= x)
     {
@@ -598,21 +571,21 @@ void ST7920_12864_HAL_FillCircle
 void ST7920_12864_HAL_DrawThickLine
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x0,
-    int y0,
-    int x1,
-    int y1,
+    uint8_t x0,
+    uint8_t y0,
+    uint8_t x1,
+    uint8_t y1,
     uint8_t thickness,
     uint8_t color
 )
 {
-    int dx = abs(x1 - x0);
-    int sx = x0 < x1 ? 1 : -1;
-    int dy = -abs(y1 - y0);
-    int sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy;
+    uint8_t dx = abs(x1 - x0);
+    uint8_t sx = x0 < x1 ? 1 : -1;
+    uint8_t dy = -abs(y1 - y0);
+    uint8_t sy = y0 < y1 ? 1 : -1;
+    uint8_t err = dx + dy;
 
-    int r = thickness / 2;
+    uint8_t r = thickness / 2;
 
     while (1)
     {
@@ -621,7 +594,7 @@ void ST7920_12864_HAL_DrawThickLine
         if (x0 == x1 && y0 == y1)
             break;
 
-        int e2 = err * 2;
+        uint8_t e2 = err * 2;
 
         if (e2 >= dy)
         {
@@ -640,14 +613,14 @@ void ST7920_12864_HAL_DrawThickLine
 void ST7920_12864_HAL_DrawBitmap
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
+    uint8_t x,
+    uint8_t y,
+    uint8_t w,
+    uint8_t h,
     const uint8_t *bmp
 )
 {
-    int bytesPerRow = (w + 7) / 8;
+    uint8_t bytesPerRow = (w + 7) / 8;
 
     for (int yy = 0; yy < h; ++yy)
     {
@@ -658,7 +631,7 @@ void ST7920_12864_HAL_DrawBitmap
 
             if (byte & (0x80 >> (xx & 7)))
             {
-                ST7920_12864_HAL_SetPixel
+                SetPixel
                 (
                     lcd,
                     x + xx,
@@ -673,14 +646,14 @@ void ST7920_12864_HAL_DrawBitmap
 void ST7920_12864_HAL_DrawBitmapLSB
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
+    uint8_t x,
+    uint8_t y,
+    uint8_t w,
+    uint8_t h,
     const uint8_t *bmp
 )
 {
-    int bytesPerRow = (w + 7) / 8;
+    uint8_t bytesPerRow = (w + 7) / 8;
 
     for (int yy = 0; yy < h; ++yy)
     {
@@ -690,7 +663,7 @@ void ST7920_12864_HAL_DrawBitmapLSB
 
             if (byte & (1 << (xx & 7)))
             {
-                ST7920_12864_HAL_SetPixel
+                SetPixel
                 (
                     lcd,
                     x + xx,
@@ -702,101 +675,43 @@ void ST7920_12864_HAL_DrawBitmapLSB
     }
 }
 
-void ST7920_12864_HAL_DrawBitmapColumns
-(
-    ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
-    const uint8_t *bmp
-)
+uint8_t GetCharPixelMSB(uint8_t bits, uint8_t row)
 {
-    int bytesPerColumn = (h + 7) / 8;
-
-    for (int xx = 0; xx < w; ++xx)
-    {
-        for (int yy = 0; yy < h; ++yy)
-        {
-            uint8_t byte = bmp[xx * bytesPerColumn + yy / 8];
-
-            if (byte & (0x80 >> (yy & 7)))
-            {
-                ST7920_12864_HAL_SetPixel
-                (
-                    lcd,
-                    x + xx,
-                    y + yy,
-                    1
-                );
-            }
-        }
-    }
+    return bits & (1 << (7 - row));
 }
 
-void ST7920_12864_HAL_DrawBitmapColumnsLSB
-(
-    ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
-    const uint8_t *bmp
-)
+uint8_t GetCharPixelLSB(uint8_t bits, uint8_t row)
 {
-    int bytesPerColumn = (h + 7) / 8;
-
-    for (int xx = 0; xx < w; ++xx)
-    {
-        for (int yy = 0; yy < h; ++yy)
-        {
-            uint8_t byte = bmp[xx * bytesPerColumn + yy / 8];
-
-            if (byte & (1 << (yy & 7)))
-            {
-                ST7920_12864_HAL_SetPixel
-                (
-                    lcd,
-                    x + xx,
-                    y + yy,
-                    1
-                );
-            }
-        }
-    }
+    return bits & (1 << row);
 }
 
-void ST7920_12864_HAL_DrawChar
+void DrawChar
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
+    uint8_t x,
+    uint8_t y,
     char c,
-    const uint8_t *font,
-    uint8_t fontWidth,
-    uint8_t fontHeight,
-    uint8_t firstChar,
-    uint8_t lastChar,
+    const ST7920_12864_HAL_FontTypeDef *font,
     uint8_t color,
-    uint8_t transparent
+    uint8_t transparent,
+    uint8_t (*getPixelFunc)(uint8_t bits, uint8_t row)
 )
 {
-    if ((uint8_t)c < firstChar || (uint8_t)c > lastChar)
-        c = '?';
+    if ((uint8_t)c < font->firstChar || (uint8_t)c > font->lastChar) c = '?';
 
-    uint32_t offset = ((uint8_t)c - firstChar) * fontWidth;
+    uint32_t offset = ((uint8_t)c - font->firstChar) * font->fontWidth;
 
-    for (uint8_t col = 0; col < fontWidth; col++)
+    for (uint8_t col = 0; col < font->fontWidth; col++)
     {
-        uint8_t bits = font[offset + col];
+        uint8_t bits = font->fontBytes[offset + col];
 
-        for (uint8_t row = 0; row < fontHeight; row++)
+        for (uint8_t row = 0; row < font->fontHeight; row++)
         {
-            uint8_t pixel = bits & (1 << (7 - row));
+            uint8_t pixel = getPixelFunc(bits, row);
 
             if (pixel)
             {
-                ST7920_12864_HAL_SetPixel
+                SetPixel
                 (
                     lcd,
                     x + col,
@@ -806,7 +721,7 @@ void ST7920_12864_HAL_DrawChar
             }
             else if (!transparent)
             {
-                ST7920_12864_HAL_SetPixel
+                SetPixel
                 (
                     lcd,
                     x + col,
@@ -818,130 +733,96 @@ void ST7920_12864_HAL_DrawChar
     }
 }
 
-void ST7920_12864_HAL_DrawString
+void ST7920_12864_HAL_DrawCharMSB
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
+    uint8_t x,
+    uint8_t y,
+    char c,
+    const ST7920_12864_HAL_FontTypeDef *font,
+    uint8_t color,
+    uint8_t transparent
+)
+{
+    DrawChar(lcd, x, y, c, font, color, transparent, GetCharPixelMSB);
+}
+
+void ST7920_12864_HAL_DrawCharLSB
+(
+    ST7920_12864_HAL_HandleTypeDef *lcd,
+    uint8_t x,
+    uint8_t y,
+    char c,
+    const ST7920_12864_HAL_FontTypeDef *font,
+    uint8_t color,
+    uint8_t transparent
+)
+{
+    DrawChar(lcd, x, y, c, font, color, transparent, GetCharPixelLSB);
+}
+
+uint8_t ST7920_12864_HAL_DrawStringMSB
+(
+    ST7920_12864_HAL_HandleTypeDef *lcd,
+    uint8_t x,
+    uint8_t y,
     const char *text,
-    const uint8_t *font,
-    uint8_t fontWidth,
-    uint8_t fontHeight,
-    uint8_t firstChar,
-    uint8_t lastChar,
+    const ST7920_12864_HAL_FontTypeDef *font,
     uint8_t color,
     uint8_t transparent,
     uint8_t spacing
 )
 {
-    int startX = x;
+    uint8_t startX = x;
 
     while (*text)
     {
         if (*text == '\n')
         {
             x = startX;
-            y += fontHeight + spacing;
+            y += font->fontHeight + spacing;
             text++;
             continue;
         }
 
-        ST7920_12864_HAL_DrawChar
+        ST7920_12864_HAL_DrawCharMSB
         (
             lcd,
             x,
             y,
             *text,
             font,
-            fontWidth,
-            fontHeight,
-            firstChar,
-            lastChar,
             color,
             transparent
         );
 
-        x += fontWidth + spacing;
+        x += font->fontWidth + spacing;
         text++;
     }
+
+    return x;
 }
 
-void ST7920_12864_HAL_DrawCharLSB
+uint8_t ST7920_12864_HAL_DrawStringLSB
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    char c,
-    const uint8_t *font,
-    uint8_t fontWidth,
-    uint8_t fontHeight,
-    uint8_t firstChar,
-    uint8_t lastChar,
-    uint8_t color,
-    uint8_t transparent
-)
-{
-    if ((uint8_t)c < firstChar || (uint8_t)c > lastChar)
-        c = '?';
-
-    uint32_t offset = ((uint8_t)c - firstChar) * fontWidth;
-
-    for (uint8_t col = 0; col < fontWidth; col++)
-    {
-        uint8_t bits = font[offset + col];
-
-        for (uint8_t row = 0; row < fontHeight; row++)
-        {
-            uint8_t pixel = bits & (1 << row);
-
-            if (pixel)
-            {
-                ST7920_12864_HAL_SetPixel
-                (
-                    lcd,
-                    x + col,
-                    y + row,
-                    color
-                );
-            }
-            else if (!transparent)
-            {
-                ST7920_12864_HAL_SetPixel
-                (
-                    lcd,
-                    x + col,
-                    y + row,
-                    !color
-                );
-            }
-        }
-    }
-}
-
-void ST7920_12864_HAL_DrawStringLSB
-(
-    ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
+    uint8_t x,
+    uint8_t y,
     const char *text,
-    const uint8_t *font,
-    uint8_t fontWidth,
-    uint8_t fontHeight,
-    uint8_t firstChar,
-    uint8_t lastChar,
+    const ST7920_12864_HAL_FontTypeDef *font,
     uint8_t color,
     uint8_t transparent,
     uint8_t spacing
 )
 {
-    int startX = x;
+    uint8_t startX = x;
 
     while (*text)
     {
         if (*text == '\n')
         {
             x = startX;
-            y += fontHeight + spacing;
+            y += font->fontHeight + spacing;
             text++;
             continue;
         }
@@ -953,16 +834,14 @@ void ST7920_12864_HAL_DrawStringLSB
             y,
             *text,
             font,
-            fontWidth,
-            fontHeight,
-            firstChar,
-            lastChar,
             color,
             transparent
         );
 
-        x += fontWidth + spacing;
+        x += font->fontWidth + spacing;
         text++;
     }
+
+    return x;
 }
 

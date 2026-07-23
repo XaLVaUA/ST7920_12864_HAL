@@ -1,26 +1,11 @@
 #ifndef ST7920_12864_HAL_H_
 #define ST7920_12864_HAL_H_
 
-#include "stm32f0xx_hal.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-typedef enum {
-    ST7920_12864_HAL_STATE_Uninitialized,
-    ST7920_12864_HAL_STATE_Ready,
-    ST7920_12864_HAL_STATE_InitDisplayWaitReset,
-    ST7920_12864_HAL_STATE_InitDisplayWaitAfterReset,
-    ST7920_12864_HAL_STATE_InitDisplayWaitFunctionSet,
-    ST7920_12864_HAL_STATE_InitDisplayWaitAfterFunctionSet,
-    ST7920_12864_HAL_STATE_InitDisplayWaitDisplayClear,
-    ST7920_12864_HAL_STATE_InitDisplayWaitAfterDisplayClear,
-    ST7920_12864_HAL_STATE_InitDisplayWaitExtendedInstructionSet,
-    ST7920_12864_HAL_STATE_InitDisplayWaitAfterExtendedInstructionSet,
-    ST7920_12864_HAL_STATE_InitDisplayWaitGraphicDisplayOn,
-    ST7920_12864_HAL_STATE_InitDisplayWaitAfterGraphicDisplayOn,
-    ST7920_12864_HAL_STATE_RenderWaitSetAddressTop,
-    ST7920_12864_HAL_STATE_RenderWaitPixelTop,
-    ST7920_12864_HAL_STATE_RenderWaitSetAddressBottom,
-    ST7920_12864_HAL_STATE_RenderWaitPixelBottom
-} ST7920_12864_HAL_State;
+#include "main.h"
 
 typedef struct
 {
@@ -32,13 +17,22 @@ typedef struct
     uint8_t pixelBuffer[1024];
     uint8_t txBuffer[12];
     uint8_t txBufferSize;
-    ST7920_12864_HAL_State state;
+    uint8_t state;
     uint32_t lastTick;
     uint8_t y;
     uint8_t xByte;
     uint16_t renderTicks;
     uint32_t lastRenderTick;
 } ST7920_12864_HAL_HandleTypeDef;
+
+typedef struct
+{
+    const uint8_t *fontBytes;
+    uint8_t fontWidth;
+    uint8_t fontHeight;
+    uint8_t firstChar;
+    uint8_t lastChar;
+} ST7920_12864_HAL_FontTypeDef;
 
 void ST7920_12864_HAL_InitHandle
 (
@@ -60,165 +54,135 @@ void ST7920_12864_HAL_SetPixel(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t x, u
 void ST7920_12864_HAL_DrawFastHLine
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
+    uint8_t x,
+    uint8_t y,
+    uint8_t w,
     uint8_t color
 );
 void ST7920_12864_HAL_DrawFastVLine
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int h,
+    uint8_t x,
+    uint8_t y,
+    uint8_t h,
     uint8_t color
 );
 void ST7920_12864_HAL_DrawLine
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x0,
-    int y0,
-    int x1,
-    int y1,
+    uint8_t x0,
+    uint8_t y0,
+    uint8_t x1,
+    uint8_t y1,
     uint8_t color
 );
 void ST7920_12864_HAL_DrawRect
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
+    uint8_t x,
+    uint8_t y,
+    uint8_t w,
+    uint8_t h,
     uint8_t color
 );
 void ST7920_12864_HAL_FillRect
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
+    uint8_t x,
+    uint8_t y,
+    uint8_t w,
+    uint8_t h,
     uint8_t color
 );
 void ST7920_12864_HAL_DrawCircle
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int xc,
-    int yc,
-    int r,
+    uint8_t xc,
+    uint8_t yc,
+    uint8_t r,
     uint8_t color
 );
 void ST7920_12864_HAL_FillCircle
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int xc,
-    int yc,
-    int r,
+    uint8_t xc,
+    uint8_t yc,
+    uint8_t r,
     uint8_t color
 );
 void ST7920_12864_HAL_DrawThickLine
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x0,
-    int y0,
-    int x1,
-    int y1,
+    uint8_t x0,
+    uint8_t y0,
+    uint8_t x1,
+    uint8_t y1,
     uint8_t thickness,
     uint8_t color
 );
 void ST7920_12864_HAL_DrawBitmap
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
+    uint8_t x,
+    uint8_t y,
+    uint8_t w,
+    uint8_t h,
     const uint8_t *bmp
 );
 void ST7920_12864_HAL_DrawBitmapLSB
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
+    uint8_t x,
+    uint8_t y,
+    uint8_t w,
+    uint8_t h,
     const uint8_t *bmp
 );
-void ST7920_12864_HAL_DrawBitmapColumns
+void ST7920_12864_HAL_DrawCharMSB
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
-    const uint8_t *bmp
-);
-void ST7920_12864_HAL_DrawBitmapColumnsLSB
-(
-    ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    int w,
-    int h,
-    const uint8_t *bmp
-);
-void ST7920_12864_HAL_DrawChar
-(
-    ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
+    uint8_t x,
+    uint8_t y,
     char c,
-    const uint8_t *font,
-    uint8_t fontWidth,
-    uint8_t fontHeight,
-    uint8_t firstChar,
-    uint8_t lastChar,
+    const ST7920_12864_HAL_FontTypeDef *font,
     uint8_t color,
     uint8_t transparent
-);
-void ST7920_12864_HAL_DrawString
-(
-    ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
-    const char *text,
-    const uint8_t *font,
-    uint8_t fontWidth,
-    uint8_t fontHeight,
-    uint8_t firstChar,
-    uint8_t lastChar,
-    uint8_t color,
-    uint8_t transparent,
-    uint8_t spacing
 );
 void ST7920_12864_HAL_DrawCharLSB
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
+    uint8_t x,
+    uint8_t y,
     char c,
-    const uint8_t *font,
-    uint8_t fontWidth,
-    uint8_t fontHeight,
-    uint8_t firstChar,
-    uint8_t lastChar,
+    const ST7920_12864_HAL_FontTypeDef *font,
     uint8_t color,
     uint8_t transparent
 );
-void ST7920_12864_HAL_DrawStringLSB
+uint8_t ST7920_12864_HAL_DrawStringMSB
 (
     ST7920_12864_HAL_HandleTypeDef *lcd,
-    int x,
-    int y,
+    uint8_t x,
+    uint8_t y,
     const char *text,
-    const uint8_t *font,
-    uint8_t fontWidth,
-    uint8_t fontHeight,
-    uint8_t firstChar,
-    uint8_t lastChar,
+    const ST7920_12864_HAL_FontTypeDef *font,
     uint8_t color,
     uint8_t transparent,
     uint8_t spacing
 );
+uint8_t ST7920_12864_HAL_DrawStringLSB
+(
+    ST7920_12864_HAL_HandleTypeDef *lcd,
+    uint8_t x,
+    uint8_t y,
+    const char *text,
+    const ST7920_12864_HAL_FontTypeDef *font,
+    uint8_t color,
+    uint8_t transparent,
+    uint8_t spacing
+);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
