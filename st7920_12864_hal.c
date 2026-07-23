@@ -92,7 +92,7 @@ void StartSetGDRAMAddressBottom(ST7920_12864_HAL_HandleTypeDef *lcd, uint8_t x, 
 
 void ST7920_12864_HAL_StartInitDisplay(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
-    lcd->rstPort->BRR = lcd->rstPin;
+    lcd->rstPort->BSRR = (uint32_t)lcd->rstPin << 16;
     lcd->csPort->BSRR = lcd->csPin;
     lcd->lastTick = HAL_GetTick();
     lcd->state = InitDisplayWaitReset;
@@ -165,7 +165,7 @@ void HandleInitDisplayWaitGraphicDisplayOn(ST7920_12864_HAL_HandleTypeDef *lcd)
 void HandleInitDisplayWaitAfterGraphicDisplayOn(ST7920_12864_HAL_HandleTypeDef *lcd)
 {
     if (HAL_GetTick() - lcd->lastTick < 1) return;
-    lcd->csPort->BRR = lcd->csPin;
+    lcd->csPort->BSRR = (uint32_t)lcd->csPin << 16;
     lcd->state = Ready;
 }
 
@@ -253,7 +253,7 @@ void HandleRenderWaitPixelBottom(ST7920_12864_HAL_HandleTypeDef *lcd)
 
         if (lcd->y >= 64)
         {
-            lcd->csPort->BRR = lcd->csPin;
+            lcd->csPort->BSRR = (uint32_t)lcd->csPin << 16;
             lcd->state = Ready;
         }
         else
